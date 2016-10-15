@@ -6,6 +6,13 @@ import time
 import numpy as numpy
 from std_msgs.msg import Float64
 
+import roslib
+import actionlib
+import trajectory_msgs.msg 
+import control_msgs.msg  
+from trajectory_msgs.msg import JointTrajectoryPoint
+from control_msgs.msg import JointTrajectoryAction, JointTrajectoryGoal, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+
 def dhmatrix(a, twist, offset, deg):
 	dh = numpy.zeros((4,4))
 	dh[0][0] = math.cos(deg);
@@ -57,63 +64,24 @@ def inverseK(x0, y0, z0, a20, a30, d10, deg1c, deg3c):
 		else:
 			deg1 = math.atan(y/x) - deg1c
 			
-			
 		#DETERMINING DEG 2 AND DEG 3
 		d = (pow(r,2)+pow((s),2)- pow(a2,2) - pow(a3,2))/(2*a2*a3)
-		
-		#~ if s<0:
-			#~ print "CASE 4"
-			#~ deg3 = -math.acos(d)
-				
-			#~ if s>0 and r<>0:
-				#~ deg2 = (math.atan((s)/r) - math.atan((a3*math.sin(deg3))/
-				#~ (a2+a3*math.cos(deg3))))
-			#~ else:
-				#~ deg2 = -(math.atan((s)/r) + math.atan((a3*math.sin(deg3))/
-				#~ (a2+a3*math.cos(deg3))))
-				
+
 		if d<=1 and d>0:
-			print "CASE 1"
+			#~ print "CASE 1"
 			deg3 = math.atan(-1*math.sqrt(1-pow(d,2))/d)
-			
-			if s>0 and r<>0:
-				#~ print "CASE s>0"
-				deg2 = math.atan((s)/r) + math.atan((a3*math.sin(-deg3))/
-				(a2+a3*math.cos(-deg3)))
-			elif r==0 and s>0:
-				deg2 = PI/2
-				#~ print "CASE r=0"
-			else:
-				#~ print "Case ELSE"
-				#~ deg2 = -math.atan((a3*math.sin(-deg3))/
-				#~ (a2+a3*math.cos(-deg3)))
-				deg2 = math.atan((s)/r) + math.atan((a3*math.sin(-deg3))/
-				(a2+a3*math.cos(-deg3)))
-				
-			
 		elif d==0:
-			print "CASE 2"
+			#~ print "CASE 2"
 			deg3 = - PI/2
-			
-			deg2 = math.atan((s)/r) + math.atan((a3*math.sin(-deg3))/
-			(a2+a3*math.cos(-deg3)))
-			
 		elif d>=-1 and d<0:
-			print "CASE 3"
+			#~ print "CASE 3"
 			deg3 = math.atan(-1*math.sqrt(1-pow(d,2))/d) - PI
-			
-			if s>0 and r<>0:
-				#~ deg2 = (math.atan((s)/r) - math.atan((a3*math.sin(deg3))/
-				#~ (a2+a3*math.cos(deg3))))
-				deg2 = math.atan((s)/r) + math.atan((a3*math.sin(-deg3))/
-				(a2+a3*math.cos(-deg3)))
-			else:
-				#~ deg2 = -(math.atan((s)/r) + math.atan((a3*math.sin(deg3))/
-				#~ (a2+a3*math.cos(deg3))))
-				deg2 = math.atan((s)/r) + math.atan((a3*math.sin(-deg3))/
-				(a2+a3*math.cos(-deg3)))
 		
-		
+		if r==0 and s>0:
+			deg2 = PI/2
+		else:
+			deg2 = math.atan((s)/r) + math.atan((a3*math.sin(-deg3))/
+				(a2+a3*math.cos(-deg3)))	
 		
 		output = numpy.zeros((3))
 		output[0] = deg1*180/PI
@@ -122,6 +90,58 @@ def inverseK(x0, y0, z0, a20, a30, d10, deg1c, deg3c):
 		#~ print "s: %.2f, d: %.2f, R: %.2f" % (s,d,R)
 		return output
 		
+def linearTrajectory(cord1, cord2, points, duration, constants):
+	#cord1 and cord2 is a list of size 3 which contain coordinates in 3D space
+	#points indicate the number of divisions in the trajectory
+	#duration is the time required for the robot to move from point1 to point2
+	#constants is a list of size 5
+	
+	d = 3
+	current = numpy.zeros((d))
+	increment = numpy.zeros((d))
+	positions = numpy.zeros((points+1,3))
+	timeStamp = numpy.zeros(points+1)
+	tIncrement = float(duration)/points
+	currentTime = 0
+	
+	for i in range(d):
+		current[i] = cord1[i]
+		increment[i] = float(cord2[i]-cord1[i])/points
+		
+	for i in range(points+1):
+		
+		inverseAngles = inverseK(current[0], current[1], current[2], constants[0], constants[1], constants[2], constants[3], constants[4])
+		
+		for j in range(d):
+			positions[i][j] = inverseAngles[j]
+			current[j] = current[j] + increment[j]
+		
+		timeStamp[i] = currentTime
+		currentTime = currentTime + tIncrement
+		#~ print "Time Stamp: %.2f, Positions: %.2f, %.2f, %.2f" % (timeStamp[i], positions[i][0], positions[i][1], positions[i][2])
+	
+	return timeStamp, positions
+
+def publishTrajectory(positions, timeStamps):
+	s = (positions.size)/3
+	print s
+	goal = FollowJointTrajectoryGoal()                  
+	goal.trajectory.joint_names = ['tilt_joint1', 'tilt_joint2','tilt_joint3']
+	
+	p = []
+	
+	for i in range(s):
+		
+		p.append(JointTrajectoryPoint())
+		p[i].positions = [positions[i][0], positions[i][1], positions[i][2]]
+		goal.trajectory.points.append(p[i])
+		goal.trajectory.points[i].time_from_start = rospy.Duration(timeStamps[i])
+
+	print goal
+
+	#~ self.jta.send_goal_and_wait(goal)
+
+
 def CloseClaw():
 	d= -1.5	
 	rospy.loginfo(numpy.float64(d))
@@ -143,7 +163,20 @@ def Turn2(deg2):
 def Turn3(deg3):
 	rospy.loginfo(numpy.float64(deg3))
 	pub3.publish(numpy.float64(deg3))
-		
+	
+def publishAngles(rads):
+	#Receives the angles in Radians
+	#degs is a list of size 3 containing the joint positions
+	Turn1(rads[0])
+	Turn2(rads[1])
+	Turn3(rads[2])
+	
+def degToRad(degs):
+	for i in range(3):
+		degs[i] = degs[i]*PI/180
+	print degs
+	return degs
+	
 if __name__== '__main__':
 	try:
 		PI = math.pi
@@ -152,21 +185,21 @@ if __name__== '__main__':
 		pub2 = rospy.Publisher('/tilt_controller2/command', Float64, queue_size=10)
 		pub3 = rospy.Publisher('/tilt_controller3/command', Float64, queue_size=10)
 		rospy.init_node('TurnServo', anonymous=True)
+		fixedVariables = numpy.zeros(5)
 		
 		#Fixed
 		deg0 = 0
-
 		l1 = 89
 		l2 = 0
 		l3 = 67.5
 		l4 = 100.552
-
 		deg3c = 11.5949
 		
-		ystart = 80.0
-		yend = -80.0
-		xconstant = 70.0
-		divisions = 10
+		fixedVariables[0] = l3
+		fixedVariables[1] = l4
+		fixedVariables[2] = l1+l2
+		fixedVariables[3] = 0
+		fixedVariables[4] = deg3c
 				
 		while not rospy.is_shutdown():
 			
@@ -177,6 +210,7 @@ if __name__== '__main__':
 				
 			elif s=="open":
 				OpenClaw()
+				
 			elif s=="t1":
 				deg = float(raw_input("Enter deg:"))
 				deg1 = deg*PI/180
@@ -193,31 +227,78 @@ if __name__== '__main__':
 				Turn3(deg3)
 				
 			elif s=="zero":
-				Turn1(0)
-				Turn2(PI/2)
-				Turn3(0)
+				#~ Turn1(0)
+				#~ Turn2(PI/2)
+				#~ Turn3(0)
 				
-			elif s=="start1":
-				inverseAngles = inverseK(xconstant,ystart,0,l3,l4,(l1+l2), 0, deg3c)
-				Turn1(inverseAngles[0]*PI/180)
-				Turn2(inverseAngles[1]*PI/180)
-				Turn3(inverseAngles[2]*PI/180)
+				publishAngles(0,PI/2,0)
+				
+			elif s=="start1":				
+				inverseAngles = inverseK(xconstant,ystart,5,l3,l4,(l1+l2), 0, deg3c)
+				#~ Turn1(inverseAngles[0]*PI/180)
+				#~ Turn2(inverseAngles[1]*PI/180)
+				#~ Turn3(inverseAngles[2]*PI/180)
+				inverseAngles = degToRad(inverseAngles)
+				publishAngles(inverseAngles)
+				print "Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f" % (inverseAngles[0], inverseAngles[1], inverseAngles[2])
 				
 			elif s=="move":
-
-				#start of movement
-				currenty = ystart				
-				increment = float((yend - ystart)/divisions)
 				
+				ystart = 80.0
+				yend = -80.0
+				xconstant = 70.0
+				zconstant = 5.0
+				delay = 0.029
+		
+				p1 = [xconstant, ystart, zconstant]
+				p2 = [xconstant, yend, zconstant]
+				divisions = 50
+				duration = 2
+				
+				#Planning the trajectory
+				timeStamp, jPositions = linearTrajectory(p1,p2,divisions,duration,fixedVariables)
+				publishTrajectory(jPositions, timeStamp)
+				
+				#Moves to start position
+				publishAngles(jPositions[0])
+				time.sleep(2)
+				
+				#Begin the linear motion
 				for n in range(1,divisions):
-					inverseAngles = inverseK(xconstant,currenty,0,l3,l4,(l1+l2), 0, deg3c)
-					Turn1(inverseAngles[0]*PI/180)
-					Turn2(inverseAngles[1]*PI/180)
-					Turn3(inverseAngles[2]*PI/180)	
-					print "%d Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f" % (n, inverseAngles[0], inverseAngles[1], inverseAngles[2])
-					currenty = currenty + increment
-					time.sleep(0.0005)
-							
+					publishAngles(jPositions[n])
+					time.sleep(delay)
+				
+				#~ #start of movement
+				#~ currenty = ystart				
+				#~ increment = float((yend - ystart)/divisions)
+
+				#~ tPositions = numpy.zeros((divisions,3))
+
+				#~ #Store an array of joint positions
+				#~ for n in range(1,divisions):
+					
+					#~ inverseAngles = inverseK(xconstant,currenty,5,l3,l4,(l1+l2), 0, deg3c)
+					#~ tPositions[n][0]=inverseAngles[0]*PI/180
+					#~ tPositions[n][1]=inverseAngles[1]*PI/180
+					#~ tPositions[n][2]=inverseAngles[2]*PI/180
+					#~ currenty = currenty + increment
+
+				#~ for n in range(1,divisions):
+					#~ Turn1(tPositions[n][0])
+					#~ Turn2(tPositions[n][1])
+					#~ Turn3(tPositions[n][2])
+					#~ time.sleep(0.029)
+
+				#~ print tPositions
+				
+			elif s=="traj":
+				p1 = [10,3,0]
+				p2 = [-10,3,0]
+				divisions = 10
+				duration = 2
+				timeStamp, jPositions = linearTrajectory(p1,p2,divisions,duration,fixedVariables)
+				publishTrajectory(jPositions, timeStamp)
+				
 			elif s=="set":
 				d = raw_input('Enter point values:')
 				n=0
