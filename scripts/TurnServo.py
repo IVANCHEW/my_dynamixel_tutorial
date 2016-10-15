@@ -111,6 +111,7 @@ def linearTrajectory(cord1, cord2, points, duration, constants):
 	for i in range(points+1):
 		
 		inverseAngles = inverseK(current[0], current[1], current[2], constants[0], constants[1], constants[2], constants[3], constants[4])
+		inverseAngles = degToRad(inverseAngles)
 		
 		for j in range(d):
 			positions[i][j] = inverseAngles[j]
@@ -118,7 +119,7 @@ def linearTrajectory(cord1, cord2, points, duration, constants):
 		
 		timeStamp[i] = currentTime
 		currentTime = currentTime + tIncrement
-		#~ print "Time Stamp: %.2f, Positions: %.2f, %.2f, %.2f" % (timeStamp[i], positions[i][0], positions[i][1], positions[i][2])
+		print "Time Stamp: %.2f, Positions: %.2f, %.2f, %.2f" % (timeStamp[i], positions[i][0], positions[i][1], positions[i][2])
 	
 	return timeStamp, positions
 
@@ -139,7 +140,8 @@ def publishTrajectory(positions, timeStamps):
 
 	print goal
 
-	#~ self.jta.send_goal_and_wait(goal)
+	client.send_goal_and_wait(goal)
+	client.wait_for_result()
 
 
 def CloseClaw():
@@ -185,7 +187,11 @@ if __name__== '__main__':
 		pub2 = rospy.Publisher('/tilt_controller2/command', Float64, queue_size=10)
 		pub3 = rospy.Publisher('/tilt_controller3/command', Float64, queue_size=10)
 		rospy.init_node('TurnServo', anonymous=True)
-		fixedVariables = numpy.zeros(5)
+		
+		client  = actionlib.SimpleActionClient('/f_arm_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+		rospy.loginfo('Waiting for joint trajectory action')
+		client.wait_for_server()
+		rospy.loginfo('Found joint trajectory action!')
 		
 		#Fixed
 		deg0 = 0
@@ -195,6 +201,7 @@ if __name__== '__main__':
 		l4 = 100.552
 		deg3c = 11.5949
 		
+		fixedVariables = numpy.zeros(5)
 		fixedVariables[0] = l3
 		fixedVariables[1] = l4
 		fixedVariables[2] = l1+l2
@@ -227,17 +234,17 @@ if __name__== '__main__':
 				Turn3(deg3)
 				
 			elif s=="zero":
-				#~ Turn1(0)
-				#~ Turn2(PI/2)
-				#~ Turn3(0)
-				
-				publishAngles(0,PI/2,0)
+				publishAngles([0,PI/2,0])
 				
 			elif s=="start1":				
+				
+				ystart = 80.0
+				yend = -80.0
+				xconstant = 70.0
+				zconstant = 5.0
+				delay = 0.029
+				
 				inverseAngles = inverseK(xconstant,ystart,5,l3,l4,(l1+l2), 0, deg3c)
-				#~ Turn1(inverseAngles[0]*PI/180)
-				#~ Turn2(inverseAngles[1]*PI/180)
-				#~ Turn3(inverseAngles[2]*PI/180)
 				inverseAngles = degToRad(inverseAngles)
 				publishAngles(inverseAngles)
 				print "Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f" % (inverseAngles[0], inverseAngles[1], inverseAngles[2])
@@ -257,47 +264,40 @@ if __name__== '__main__':
 				
 				#Planning the trajectory
 				timeStamp, jPositions = linearTrajectory(p1,p2,divisions,duration,fixedVariables)
-				publishTrajectory(jPositions, timeStamp)
 				
-				#Moves to start position
-				publishAngles(jPositions[0])
-				time.sleep(2)
+				print jPositions[0]
 				
-				#Begin the linear motion
-				for n in range(1,divisions):
-					publishAngles(jPositions[n])
-					time.sleep(delay)
+				confirm = raw_input('Confirm move servos (y/n):')			
 				
-				#~ #start of movement
-				#~ currenty = ystart				
-				#~ increment = float((yend - ystart)/divisions)
-
-				#~ tPositions = numpy.zeros((divisions,3))
-
-				#~ #Store an array of joint positions
-				#~ for n in range(1,divisions):
+				if (confirm=="y"):
+					#Moves to start position
+					publishAngles(jPositions[0])
+					time.sleep(2)
 					
-					#~ inverseAngles = inverseK(xconstant,currenty,5,l3,l4,(l1+l2), 0, deg3c)
-					#~ tPositions[n][0]=inverseAngles[0]*PI/180
-					#~ tPositions[n][1]=inverseAngles[1]*PI/180
-					#~ tPositions[n][2]=inverseAngles[2]*PI/180
-					#~ currenty = currenty + increment
-
-				#~ for n in range(1,divisions):
-					#~ Turn1(tPositions[n][0])
-					#~ Turn2(tPositions[n][1])
-					#~ Turn3(tPositions[n][2])
-					#~ time.sleep(0.029)
-
-				#~ print tPositions
+					confirm = raw_input('Confirm move servos (y/n):')			
+				
+					if (confirm=="y"):
+				
+						#Begin the linear motion
+						for n in range(1,divisions):
+							publishAngles(jPositions[n])
+							time.sleep(delay)
 				
 			elif s=="traj":
-				p1 = [10,3,0]
-				p2 = [-10,3,0]
-				divisions = 10
-				duration = 2
+				
+				ystart = 80.0
+				yend = -80.0
+				xconstant = 70.0
+				zconstant = 5.0
+				
+				p1 = [xconstant, ystart, zconstant]
+				p2 = [xconstant, yend, zconstant]
+				divisions = 100
+				duration = 1
 				timeStamp, jPositions = linearTrajectory(p1,p2,divisions,duration,fixedVariables)
-				publishTrajectory(jPositions, timeStamp)
+				confirm = raw_input('Confirm move servos (y/n):')			
+				if (confirm=="y"):
+					publishTrajectory(jPositions, timeStamp)
 				
 			elif s=="set":
 				d = raw_input('Enter point values:')
