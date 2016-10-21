@@ -13,6 +13,7 @@ import trajectory_msgs.msg
 import control_msgs.msg  
 from trajectory_msgs.msg import JointTrajectoryPoint
 from control_msgs.msg import JointTrajectoryAction, JointTrajectoryGoal, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+from dynamixel_controllers.srv import *
 
 def dhmatrix(a, twist, offset, deg):
 	dh = numpy.zeros((4,4))
@@ -323,7 +324,7 @@ def testTrajectory(c, duration):
 		
 
 def CloseClaw():
-	d= -0.03
+	d= -0.279
 	rospy.loginfo(numpy.float64(d))
 	pub4.publish(numpy.float64(d))
 
@@ -360,6 +361,20 @@ def degToRad(degs):
 		degs[i] = degs[i]*PI/180
 	print degs
 	return degs
+	
+def defaultSpeed():
+	rospy.wait_for_service('/tilt_controller2/set_speed')
+	set_speed1 = rospy.ServiceProxy('/tilt_controller1/set_speed', SetSpeed)
+	set_speed2 = rospy.ServiceProxy('/tilt_controller2/set_speed', SetSpeed)
+	set_speed3 = rospy.ServiceProxy('/tilt_controller3/set_speed', SetSpeed)
+	set_speed4 = rospy.ServiceProxy('/tilt_controller4/set_speed', SetSpeed)
+	try:
+		set_speed1(1.17)
+		set_speed2(1.17)
+		set_speed3(1.17)
+		set_speed4(1.17)
+	except rospy.ServiceException as exc:
+		print("Service did not process request: " + str(exc))
 	
 def moveTraj(p1,p2, duration, delay):
 		
@@ -476,6 +491,30 @@ if __name__== '__main__':
 				
 			elif s=="open":
 				OpenClaw()
+				
+			elif s=="default":				
+				#~ goal = FollowJointTrajectoryGoal()                  
+				#~ goal.trajectory.joint_names = ['tilt_joint1', 'tilt_joint2','tilt_joint3', 'tilt_joint4']
+				#~ p = JointTrajectoryPoint()
+				#~ p.velocities = [2, 2, 2, 2]
+				#~ p.positions = [0,1.57,0,0]
+				#~ goal.trajectory.points.append(p)
+							
+				#~ client.send_goal_and_wait(goal)
+				#~ client.wait_for_result()
+								
+				rospy.wait_for_service('/tilt_controller2/set_speed')
+				set_speed1 = rospy.ServiceProxy('/tilt_controller1/set_speed', SetSpeed)
+				set_speed2 = rospy.ServiceProxy('/tilt_controller2/set_speed', SetSpeed)
+				set_speed3 = rospy.ServiceProxy('/tilt_controller3/set_speed', SetSpeed)
+				set_speed4 = rospy.ServiceProxy('/tilt_controller4/set_speed', SetSpeed)
+				try:
+					set_speed1(1.17)
+					set_speed2(1.17)
+					set_speed3(1.17)
+					set_speed4(1.17)
+				except rospy.ServiceException as exc:
+					print("Service did not process request: " + str(exc))
 				
 			elif s=="t1":
 				deg = float(raw_input("Enter deg:"))
@@ -926,62 +965,131 @@ if __name__== '__main__':
 					deg4 = (deg2 + deg3)*PI/180
 					Turn4(deg4)
 					
-			elif s=="parallel":
-				#~ xstart = 90.0
-				#~ xend = 110.0
-				#~ ystart = 0.0
-				#~ yend = 0.0
-				#~ zstart = 80.0
-				#~ zend = 80.0
-				#~ duration = 2
-				#~ delay = 0.029
+			elif s=="picktest2":
 				
-				#~ p1 = [xstart, ystart, zstart, 0]
-				#~ p2 = [100, 0, 80, duration/2]
-				#~ p3 = [xend, yend, zend, duration]
+				confirm = raw_input('Move to start point? (y/n):')			
+				if (confirm=="y"):
+					
+					#Move to start point
+					xstart = 45.0
+					ystart = 0.0
+					zstart = 165.0
+					inverseAngles = inverseK(xstart, ystart, zstart,fixedVariables2[0],fixedVariables2[1],fixedVariables2[2], fixedVariables2[3], fixedVariables2[4])
+					deg1 = inverseAngles[0]
+					deg2 = inverseAngles[1]
+					deg3 = inverseAngles[2]
 				
-				xstart = 110.0
-				xend = 70.0
-				ystart = 0.0
-				yend = 0.0
-				zstart = 80.0
-				zend = 150.0
-				duration = 2
-				delay = 0.029
+					Turn1(deg1*PI/180)
+					Turn2(deg2*PI/180)
+					Turn3(deg3*PI/180)	
+					deg4 = (deg2 + deg3)*PI/180
+					Turn4(deg4)
+					
+					confirm = raw_input('Begin pick motion? (y/n):')			
+					if (confirm=="y"):
+					
+						#Pick test - Fixed point
+						xend = xstart + 15			
+						yend = 0.0				
+						zend = zstart
+						duration = 0.9
+						delay = 0.029
+						
+						xmid = (xend + xstart) / 2
+						ymid = (yend + ystart) / 2
+						zmid = (zend + zstart) / 2
+						
+						p1 = [xstart, ystart, zstart, 0]
+						#~ p2 = [45, 0, 168, duration/2]
+						p2 = [xmid, ymid, zmid, duration/2]
+						p3 = [xend, yend, zend, duration]
+						
+						c1, c2, c3 = viaPointTrajectoryCalculation(p1,p2,p3,fixedVariables2)
+						
+						c = []
+						c.append(c1)
+						c.append(c2)
+						c.append(c3)
+						
+						testTrajectory(c,duration)
+						
+						confirm = raw_input('Begin lift motion? (y/n):')			
+						if (confirm=="y"):
+						
+							#Lift Test
+							xstart = xend
+							ystart = 0.0
+							yend = 0.0
+							zstart = zend
+							zend = zstart + 19
+							duration = 1.4
+							delay = 0.029
+							
+							p1 = [xstart, ystart, zstart, 0]
+							#~ p2 = [50, 0, 174, duration/2]
+							xmid = (xend + xstart) / 2
+							ymid = (yend + ystart) / 2
+							zmid = (zend + zstart) / 2
+							p2 = [xmid, ymid, zmid, duration/2]
+							p3 = [xend, yend, zend, duration]
+											
+							c1, c2, c3 = viaPointTrajectoryCalculation(p1,p2,p3,fixedVariables2)
+							
+							c = []
+							c.append(c1)
+							c.append(c2)
+							c.append(c3)
+							
+							testTrajectory(c,duration)
+							
+							defaultSpeed()
+							
+							confirm = raw_input('Close Claw? (y/n):')			
+							if (confirm=="y"):
+								CloseClaw()
 				
-				p1 = [xstart, ystart, zstart, 0]
-				p2 = [110, 0, 90, duration/2]
-				p3 = [xend, yend, zend, duration]
+			elif s=="demoparallel":
 				
+				confirm = raw_input('Move to start point? (y/n):')			
+				if (confirm=="y"):
+					
+					#Move to start point
+					xstart = 110.0
+					ystart = 0.0
+					zstart = 80.0
+					inverseAngles = inverseK(xstart, ystart, zstart,fixedVariables2[0],fixedVariables2[1],fixedVariables2[2], fixedVariables2[3], fixedVariables2[4])
+					deg1 = inverseAngles[0]
+					deg2 = inverseAngles[1]
+					deg3 = inverseAngles[2]
 				
-				#~ xstart = 110,0
-				#~ xend = 110.0
-				#~ ystart = 0.0
-				#~ yend = 0.0
-				#~ zstart = 80.0
-				#~ zend = 100.0
-				#~ duration = 2
-				#~ delay = 0.029
-				
-				#~ xmid = (xstart - xend)/2
-				#~ ymid = (ystart - yend)/2
-				#~ zmid = (zstart - zend)/2
-				
-				#~ p1 = [xstart, ystart, zstart, 0]
-				#~ p2 = [xmid, ymid, zmid, duration/2]
-				#~ p2 = [110,0,90,duration/2]
-				#~ p3 = [xend, yend, zend, duration]
-				
-				
-				c1, c2, c3 = viaPointTrajectoryCalculation(p1,p2,p3,fixedVariables2)
-				
-				c = []
-				c.append(c1)
-				c.append(c2)
-				c.append(c3)
-				
-				testTrajectory(c,duration)
-			
+					Turn1(deg1*PI/180)
+					Turn2(deg2*PI/180)
+					Turn3(deg3*PI/180)	
+					deg4 = (deg2 + deg3)*PI/180
+					Turn4(deg4)
+					
+					confirm = raw_input('Start Motion? (y/n):')			
+					if (confirm=="y"):
+						#~ #Long Distance Test
+						
+						xend = 70.0
+						yend = 0.0
+						zend = 150.0
+						duration = 2
+						delay = 0.029
+						
+						p1 = [xstart, ystart, zstart, 0]
+						p2 = [110, 0, 90, duration/2]
+						p3 = [xend, yend, zend, duration]
+						
+						c1, c2, c3 = viaPointTrajectoryCalculation(p1,p2,p3,fixedVariables2)
+								
+						c = []
+						c.append(c1)
+						c.append(c2)
+						c.append(c3)
+						
+						testTrajectory(c,duration)
 			
 	except rospy.ROSInterruptException:
 		pass
