@@ -146,190 +146,266 @@ def publishTrajectory(positions, timeStamps):
 	client.wait_for_result()
 
 #Get Trajectory Constants for all three joints
-def viaPointTrajectoryCalculation(Point1, Point2, Point3, constants):
+def viaPointTrajectoryCalculation(startPoint, endPoint, duration, constants, viaPointsNumber):
 	
-	Ik1 = inverseK(Point1[0], Point1[1], Point1[2], constants[0], constants[1], constants[2], constants[3], constants[4])
-	Ik2 = inverseK(Point2[0], Point2[1], Point2[2], constants[0], constants[1], constants[2], constants[3], constants[4])
-	Ik3 = inverseK(Point3[0], Point3[1], Point3[2], constants[0], constants[1], constants[2], constants[3], constants[4])
+	#Load Cartesian Coordinate Positions
+	P = numpy.zeros((viaPointsNumber+2, 3))
 	
-	Ik1 = degToRad(Ik1)
-	Ik2 = degToRad(Ik2)
-	Ik3 = degToRad(Ik3)
-	print "Inverse Angles, starting point:"
-	print Ik1
-	print "Inverse Angles, via point:"
-	print Ik2
-	print "Inverse Angles, Final point:"
-	print Ik3
+	n = 0
+	P[n][0] = startPoint[0]
+	P[n][1] = startPoint[1] 
+	P[n][2] = startPoint[2] 
 	
-	t = numpy.zeros((3))
+	step = numpy.zeros((3))
+	for i in range(3):
+		step[i] = (endPoint[i] - startPoint[i]) / (viaPointsNumber + 1)
+		
+	for i in range(viaPointsNumber):
+		
+		for j in range(3):
+			P[i+1][j] = P[i][j] + step[j]
+
+	
+	n = viaPointsNumber + 1
+	P[n][0] = endPoint[0]
+	P[n][1] = endPoint[1] 
+	P[n][2] = endPoint[2] 
+	
+	print "Coordinate Positions:"
+	print P
+	
+	#Load Joint Space Positions
+	Ik = numpy.zeros((viaPointsNumber+2, 3))
+	for i in range(viaPointsNumber + 2):
+		Ik[i] = inverseK(P[i][0], P[i][1], P[i][2], constants[0], constants[1], constants[2], constants[3], constants[4])
+		Ik[i] = degToRad(Ik[i])
+
+	print "Inverse Angles:"
+	print Ik
+	
+	t = numpy.zeros((viaPointsNumber + 2))
+	timeStep = float(duration) / (viaPointsNumber + 1)
 	t[0] = 0 
-	t[1] = Point2[3]
-	t[2] = Point3[3]
+	for i in range(viaPointsNumber + 1):
+		t[i+1] = t[i] + timeStep
 	
-	P1 = numpy.zeros((7))
-	P2 = numpy.zeros((7))
-	P3 = numpy.zeros((7))
+	print "Duration %.2f" % duration
+	print "Time Stamps:"
+	print t
 	
-	P1[0] = Ik1[0]
-	P1[1] = Ik2[0]
-	P1[2] = Ik3[0]
+	#Load Matrix B
+	B = numpy.zeros((viaPointsNumber + 2,viaPointsNumber + 6))
+	for i in range(viaPointsNumber + 2):
+		for j in range(3):
+			B[j][i] = Ik[i][j]
 	
-	P2[0] = Ik1[1]
-	P2[1] = Ik2[1]
-	P2[2] = Ik3[1]
+	print "Matrix B:"
+	print B
+
+	#Load Matrix A: Joint Position Rows
+	A1 = numpy.zeros((6+viaPointsNumber,6+viaPointsNumber))
 	
-	P3[0] = Ik1[2]
-	P3[1] = Ik2[2]
-	P3[2] = Ik3[2]	
+	for i in range (2 + viaPointsNumber):
+		
+		for j in range (6+viaPointsNumber):
+			
+			A1[i][j] = pow(t[i],5+viaPointsNumber-j)
+		
+		A1[i][5+viaPointsNumber] = 1
 	
-	A = numpy.zeros((7,7))
-	A[0][0] = pow(t[0],6)
-	A[0][1] = pow(t[0],5)
-	A[0][2] = pow(t[0],4)
-	A[0][3] = pow(t[0],3)
-	A[0][4] = pow(t[0],2)
-	A[0][5] = t[0]
-	A[0][6] = 1
+	#Load Matrix A: Loading the last 4 rows
+	n = 2 + viaPointsNumber
 	
-	A[1][0] = pow(t[1],6)
-	A[1][1] = pow(t[1],5)
-	A[1][2] = pow(t[1],4)
-	A[1][3] = pow(t[1],3)
-	A[1][4] = pow(t[1],2)
-	A[1][5] = t[1]
-	A[1][6] = 1
+	tSkip = numpy.zeros((2))
+	tSkip[1] = viaPointsNumber + 1
 	
-	A[2][0] = pow(t[2],6)
-	A[2][1] = pow(t[2],5)
-	A[2][2] = pow(t[2],4)
-	A[2][3] = pow(t[2],3)
-	A[2][4] = pow(t[2],2)
-	A[2][5] = t[2]
-	A[2][6] = 1
+	for i in range (2):
+		
+		for j in range(5+viaPointsNumber):
+			
+			A1[n+i][j] = (5+viaPointsNumber-j)*pow(t[tSkip[i]],viaPointsNumber+4-j)
+		
+		A1[n+i][4+viaPointsNumber] = 1
 	
-	A[3][0] = 6*pow(t[0],5)
-	A[3][1] = 5*pow(t[0],4)
-	A[3][2] = 4*pow(t[0],3)
-	A[3][3] = 3*pow(t[0],2)
-	A[3][4] = 2*t[0]
-	A[3][5] = 1
-	A[3][6] = 0
+	n = 4 + viaPointsNumber
+	for i in range (2):
+		
+		for j in range(4+viaPointsNumber):
+			
+			A1[n+i][j] = (4+viaPointsNumber-j)*(5+viaPointsNumber-j)*pow(t[tSkip[i]],viaPointsNumber+3-j)
+		
+		A1[n+i][3+viaPointsNumber] = 2
+		
 	
-	A[4][0] = 6*pow(t[2],5)
-	A[4][1] = 5*pow(t[2],4)
-	A[4][2] = 4*pow(t[2],3)
-	A[4][3] = 3*pow(t[2],2)
-	A[4][4] = 2*t[2]
-	A[4][5] = 1
-	A[4][6] = 0
+	print "A1:"
+	print A1
 	
-	A[5][0] = 30*pow(t[0],4)
-	A[5][1] = 20*pow(t[0],3)
-	A[5][2] = 12*pow(t[0],2)
-	A[5][3] = 6*t[0]
-	A[5][4] = 2
-	A[5][5] = 0
-	A[5][6] = 0
+	#Inverse
+	A2 = inv(A1)
 	
-	A[6][0] = 30*pow(t[2],4)
-	A[6][1] = 20*pow(t[2],3)
-	A[6][2] = 12*pow(t[2],2)
-	A[6][3] = 6*t[2]
-	A[6][4] = 2
-	A[6][5] = 0
-	A[6][6] = 0
+	#Determining the trajectory coefficients
+	C = numpy.zeros((viaPointsNumber + 2,viaPointsNumber + 6))
+	for i in range (viaPointsNumber + 2):
+		C[i] = numpy.dot(A2 , B[i])
+		
+	print "C:"
+	print C
 	
-	Ainv = inv(A)
-	
-	print "Inverse Matrix:"
-	print Ainv
-	
-	C1 = numpy.dot(Ainv, P1)
-	C2 = numpy.dot(Ainv, P2)
-	C3 = numpy.dot(Ainv, P3)
-	
-	print "P2:"
-	print P2
-	print "Coefficient for joint 2:"
-	print C2
-	
-	return C1, C2, C3
+	return C
 
 #Ensures fork is parallel with the ground	
-def testTrajectory(c, duration):
+def publishViaPointTrajectory(c, duration, divisions, viaPointsNumber):
 	
 	goal = FollowJointTrajectoryGoal()                  
 	goal.trajectory.joint_names = ['tilt_joint1', 'tilt_joint2','tilt_joint3', 'tilt_joint4']
-	#duration = 2.0
 	duration = float(duration)
-	divisions = 100
 	currentTime = 0
 	timeStep = float(duration/divisions)
-	p = []
-	v = []
-	positions = numpy.zeros((100,4))
-	velocities = numpy.zeros((100,4))
-	print timeStep
 	
-	print "Constants"
-	print c
+	positions = numpy.zeros((divisions+1,4))
+	velocities = numpy.zeros((divisions+1,4))
+	accelerations = numpy.zeros((divisions+1,4))
+	
+	print timeStep
 	
 	print "Duration: %.2f, Time Step: %.2f" % (duration, timeStep)
 	
-	for i in range(divisions):
-		n=0
-		positions[i][0] = c[n][0]*pow(currentTime,6) + c[n][1]*pow(currentTime,5) + c[n][2]*pow(currentTime,4) + c[n][3]*pow(currentTime,3) + c[n][4]*pow(currentTime,2) + c[n][5]*currentTime + c[n][6]
-		n=1
-		positions[i][1] = c[n][0]*pow(currentTime,6) + c[n][1]*pow(currentTime,5) + c[n][2]*pow(currentTime,4) + c[n][3]*pow(currentTime,3) + c[n][4]*pow(currentTime,2) + c[n][5]*currentTime + c[n][6]
-		n=2
-		positions[i][2] = c[n][0]*pow(currentTime,6) + c[n][1]*pow(currentTime,5) + c[n][2]*pow(currentTime,4) + c[n][3]*pow(currentTime,3) + c[n][4]*pow(currentTime,2) + c[n][5]*currentTime + c[n][6]
-		n=3
-		positions[i][3] = positions[i][1] + positions[i][2]
-		n=0
-		velocities[i][0] = 6*c[n][0]*pow(currentTime,5) + 5*c[n][1]*pow(currentTime,4) + 4*c[n][2]*pow(currentTime,3) + 3*c[n][3]*pow(currentTime,2) + 2*c[n][4]*currentTime + c[n][5]
-		n=1
-		velocities[i][1] = 6*c[n][0]*pow(currentTime,5) + 5*c[n][1]*pow(currentTime,4) + 4*c[n][2]*pow(currentTime,3) + 3*c[n][3]*pow(currentTime,2) + 2*c[n][4]*currentTime + c[n][5]
-		n=2
-		velocities[i][2] = 6*c[n][0]*pow(currentTime,5) + 5*c[n][1]*pow(currentTime,4) + 4*c[n][2]*pow(currentTime,3) + 3*c[n][3]*pow(currentTime,2) + 2*c[n][4]*currentTime + c[n][5]
+	#Calculate Position and Velocity Values
+	for i in range(divisions+1):
 		
-		currentTime = timeStep + currentTime		
+		for n in range(3):
+			
+			#Loading Positions
+			for j in range(viaPointsNumber + 5):
+				positions[i][n] = positions[i][n] + c[n][j]*pow(currentTime,viaPointsNumber+5-j)
+				
+			positions[i][n] = positions[i][n] + c[n][viaPointsNumber + 5]
+			
+			#Loading Velocities
+			for j in range(viaPointsNumber + 4):
+				velocities[i][n] = velocities[i][n] + (viaPointsNumber + 5-j)*c[n][j]*pow(currentTime, viaPointsNumber + 4 - j)
 		
-		#~ print "Current Time: %.2f" % currentTime
+			velocities[i][n] = velocities[i][n] + c[n][viaPointsNumber + 4]
+			
+			#Loading Accelerations
+			for j in range(viaPointsNumber + 3):
+				accelerations[i][n] = accelerations[i][n] + (viaPointsNumber + 4 - j)*(viaPointsNumber + 5-j)*c[n][j]*pow(currentTime, viaPointsNumber + 3 - j)
 		
-	print positions
-	#~ print velocities
+			accelerations[i][n] = accelerations[i][n] + c[n][viaPointsNumber + 3]
+			
+		positions[i][3] = -(positions[i][1] + positions[i][2])
+		
+		currentTime = timeStep + currentTime	
 	
+	print "Positions"
+	print positions
+	print "Velocities"
+	print velocities
 	currentTime = 0
 	
-	for i in range(divisions):
+	#Loading Goal object
+	p = []
+	v = []
+	
+	for i in range(divisions+1):
 		
-		#~ j1 = 0.3540*pow(currentTime,6) - 2.12215*pow(currentTime,5) + 4.2355*pow(currentTime,4) - 2.8152*pow(currentTime,3) + 1.1271
-		#~ j2 = 0
-		#~ w1 = 2.124*pow(currentTime,5) - 10.6075*pow(currentTime,4) + 16.942*pow(currentTime,3) - 8.4456*pow(currentTime,2)
-		#~ w1 = 0
 		p.append(JointTrajectoryPoint())
-		p[i].positions = [0, positions[i][1], positions[i][2], positions[i][3]]
-		p[i].velocities = [0, velocities[i][1], velocities[i][2], 0]
+		p[i].positions = [positions[i][0], positions[i][1], positions[i][2], positions[i][3]]
+		p[i].velocities = [velocities[i][0], velocities[i][1], velocities[i][2], 0]
+		p[i].accelerations = [accelerations[i][0], accelerations[i][1], accelerations[i][2], 0]
 		goal.trajectory.points.append(p[i])
 		goal.trajectory.points[i].time_from_start = rospy.Duration(currentTime)
 		currentTime = timeStep + currentTime
-		
-	print goal.trajectory.points[0]
-	print goal.trajectory.points[50]
-	print goal.trajectory.points[99]
 	
+	#Print start, mid and end point for reference
+	print goal.trajectory.points[0]
+	print goal.trajectory.points[divisions/2]
+	print goal.trajectory.points[divisions]
+	
+	#~ #Executing Motion				
 	client.send_goal_and_wait(goal)
 	client.wait_for_result()
-		
 
+#Fork not parallel
+def publishViaPointTrajectory2(c, duration, divisions, viaPointsNumber):
+	
+	goal = FollowJointTrajectoryGoal()                  
+	goal.trajectory.joint_names = ['tilt_joint1', 'tilt_joint2','tilt_joint3', 'tilt_joint4']
+	duration = float(duration)
+	currentTime = 0
+	timeStep = float(duration/divisions)
+	
+	positions = numpy.zeros((divisions+1,4))
+	velocities = numpy.zeros((divisions+1,4))
+	accelerations = numpy.zeros((divisions+1,4))
+	
+	print timeStep
+	
+	print "Duration: %.2f, Time Step: %.2f" % (duration, timeStep)
+	
+	#Calculate Position and Velocity Values
+	for i in range(divisions+1):
+		
+		for n in range(3):
+			
+			#Loading Positions
+			for j in range(viaPointsNumber + 5):
+				positions[i][n] = positions[i][n] + c[n][j]*pow(currentTime,viaPointsNumber+5-j)
+				
+			positions[i][n] = positions[i][n] + c[n][viaPointsNumber + 5]
+			
+			#Loading Velocities
+			for j in range(viaPointsNumber + 4):
+				velocities[i][n] = velocities[i][n] + (viaPointsNumber + 5-j)*c[n][j]*pow(currentTime, viaPointsNumber + 4 - j)
+		
+			velocities[i][n] = velocities[i][n] + c[n][viaPointsNumber + 4]
+			
+			#Loading Accelerations
+			for j in range(viaPointsNumber + 3):
+				accelerations[i][n] = accelerations[i][n] + (viaPointsNumber + 4 - j)*(viaPointsNumber + 5-j)*c[n][j]*pow(currentTime, viaPointsNumber + 3 - j)
+		
+			accelerations[i][n] = accelerations[i][n] + c[n][viaPointsNumber + 3]
+			
+		positions[i][3] = 0
+		
+		currentTime = timeStep + currentTime	
+	
+	print "Positions"
+	print positions
+	print "Velocities"
+	print velocities
+	currentTime = 0
+	
+	#Loading Goal object
+	p = []
+	v = []
+	
+	for i in range(divisions+1):
+		
+		p.append(JointTrajectoryPoint())
+		p[i].positions = [positions[i][0], positions[i][1], positions[i][2], positions[i][3]]
+		p[i].velocities = [velocities[i][0], velocities[i][1], velocities[i][2], 0]
+		p[i].accelerations = [accelerations[i][0], accelerations[i][1], accelerations[i][2], 0]
+		goal.trajectory.points.append(p[i])
+		goal.trajectory.points[i].time_from_start = rospy.Duration(currentTime)
+		currentTime = timeStep + currentTime
+	
+	#Print start, mid and end point for reference
+	print goal.trajectory.points[0]
+	print goal.trajectory.points[divisions/2]
+	print goal.trajectory.points[divisions]
+	
+	#~ #Executing Motion
+	client.send_goal_and_wait(goal)
+	client.wait_for_result()
+				
 def CloseClaw():
-	d= -0.279
+	d= 0.55
 	rospy.loginfo(numpy.float64(d))
 	pub4.publish(numpy.float64(d))
 
 def OpenClaw():
-	d= 0.5
+	d= -0.175
 	rospy.loginfo(numpy.float64(d))
 	pub4.publish(numpy.float64(d))
 
@@ -375,62 +451,233 @@ def defaultSpeed():
 		set_speed4(1.17)
 	except rospy.ServiceException as exc:
 		print("Service did not process request: " + str(exc))
+
+#Configured for Ik2
+def movePoint(Point1, constants):
 	
-def moveTraj(p1,p2, duration, delay):
-		
-	divisions = 50
+	print "Target Point: %.2f, %.2f, %.2f" % (Point1[0], Point1[1], Point1[2])
 	
-	#Planning the trajectory
-	timeStamp, jPositions = linearTrajectory(p1,p2,divisions,duration,fixedVariables)
-	
-	print jPositions[0]
-	
-	confirm = raw_input('Confirm move servos (y/n):')			
-	
+	Ik = inverseK(Point1[0], Point1[1], Point1[2], constants[0], constants[1], constants[2], constants[3], constants[4])
+	print "Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f" % (Ik[0], Ik[1], Ik[2])
+	Ik = degToRad(Ik)
+	confirm = raw_input('Move to start point? (y/n):')			
 	if (confirm=="y"):
-		#Moves to start position
-		publishAngles(jPositions[0])
-		time.sleep(2)
 		
-		confirm = raw_input('Confirm move servos (y/n):')			
-	
-		if (confirm=="y"):
-	
-			#Begin the linear motion
-			for n in range(1,divisions):
-				publishAngles(jPositions[n])
-				time.sleep(delay)
-				
-			return True
+		Turn1(Ik[0])
+		Turn2(Ik[1])
+		Turn3(Ik[2])	
+		deg4 = -(Ik[1] + Ik[2])
+		Turn4(deg4)
 		
-		else:
-			
-			return False
+		return True
+	
 	else:
 		
 		return False
 		
-def moveTraj2(p1,p2, duration, delay):
+#None Parallel Plate
+def movePoint2(Point1, constants):
+	
+	print "Target Point: %.2f, %.2f, %.2f" % (Point1[0], Point1[1], Point1[2])
+	
+	confirm = raw_input('Move to start point? (y/n):')			
+	if (confirm=="y"):
+					
+		Ik = inverseK(Point1[0], Point1[1], Point1[2], constants[0], constants[1], constants[2], constants[3], constants[4])
+		Ik = degToRad(Ik)
 		
-	divisions = 50
-	
-	#Planning the trajectory
-	timeStamp, jPositions = linearTrajectory(p1,p2,divisions,duration,fixedVariables)
-	
-	print jPositions[0]
-	
-	#Moves to start position
-	publishAngles(jPositions[0])
-	time.sleep(2)	
-	
-	#Begin the linear motion
-	for n in range(1,divisions):
-		publishAngles(jPositions[n])
-		time.sleep(delay)
+		Turn1(Ik[0])
+		Turn2(Ik[1])
+		Turn3(Ik[2])	
+		Turn4(0)
 		
-	return True
+		return True
+	
+	else:
+		
+		return False
+					
+def movePick(P, fixedVariables2):
+	#Move to start point
+	xstart = P[0]
+	ystart = P[1]
+	zstart = P[2]
+	
+	#Motion Constants
+	probeInsert = 15
+	probeInsertDuration = 0.5
+	probeLift = 30
+	probeLiftDuration = 0.5
+	
+	move = startPickPosition(P, fixedVariables2)
+	
+	if (move==True):
+		
+		confirm = raw_input('Begin pick motion? (y/n):')			
+		if (confirm=="y"):
+		
+			#Probe Insert Action
+			xend = xstart + probeInsert	
+			yend = 0.0				
+			zend = zstart
+			duration = probeInsertDuration
+			
+			startPoint = [xstart, ystart, zstart, 0]
+			endPoint = [xend, yend, zend, duration]
+			
+			viaPoints = 1
+			divisions = 5
+			
+			c = viaPointTrajectoryCalculation(startPoint,endPoint,duration,fixedVariables2,viaPoints)
 
+			publishViaPointTrajectory(c,duration, divisions, viaPoints)
+			
+			confirm = raw_input('Begin lift motion? (y/n):')			
+			if (confirm=="y"):
+			
+				#Probe Lift Action
+				xstart = xend
+				ystart = 0.0
+				yend = 0.0
+				zstart = zend
+				zend = zstart + probeLift
+				duration = probeLiftDuration
+				
+				startPoint = [xstart, ystart, zstart, 0]
+				endPoint = [xend, yend, zend, duration]
+								
+				viaPoints = 1
+				divisions = 5
+				
+				c = viaPointTrajectoryCalculation(startPoint,endPoint,duration,fixedVariables2,viaPoints)
+
+				publishViaPointTrajectory(c,duration, divisions, viaPoints)
+				
+				time.sleep(1)
+				defaultSpeed()
+				
+				confirm = raw_input('Close Claw? (y/n):')			
+				if (confirm=="y"):
+						
+					move = movePoint2([70,0,200], fixedVariables2)
+					CloseClaw()
+
+def startPickPosition(Point1, constants):
+	#zero
+	publishAngles([0,PI/2,0])
 	
+	print "Target Point: %.2f, %.2f, %.2f" % (Point1[0], Point1[1], Point1[2])
+	
+	Ik = inverseK(Point1[0], Point1[1], Point1[2], constants[0], constants[1], constants[2], constants[3], constants[4])
+	print "Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f" % (Ik[0], Ik[1], Ik[2])
+	Ik = degToRad(Ik)
+	confirm = raw_input('Move to start point? (y/n):')			
+	if (confirm=="y"):
+		
+		Turn1(Ik[0])
+		Turn3(Ik[2])	
+		time.sleep(1.5)
+		Turn2(Ik[1])			
+		deg4 = -(Ik[1] + Ik[2])
+		Turn4(deg4)
+		
+		return True
+	
+	else:
+		
+		return False
+		
+def moveInsert(P, fixedVariables2):
+	#Move to start point
+	xstart = P[0]
+	ystart = P[1]
+	zstart = P[2]
+	
+	#Motion Constants
+	probeInsert = -40
+	probeInsertDuration = 1.2
+	probeWithdraw = 30
+	probeWithdrawHeight = 10
+	probeWithdrawDuration = 0.5
+	
+	move = startInsertPosition(P, fixedVariables2)
+	
+	if (move==True):
+		
+		confirm = raw_input('Begin Insert motion? (y/n):')			
+		if (confirm=="y"):
+		
+			#Pick test - Fixed point
+			xend = xstart 
+			yend = ystart			
+			zend = zstart + probeInsert	
+			duration = probeInsertDuration
+			
+			startPoint = [xstart, ystart, zstart, 0]
+			endPoint = [xend, yend, zend, duration]
+			
+			viaPoints = 1
+			divisions = 5
+			
+			c = viaPointTrajectoryCalculation(startPoint,endPoint,duration,fixedVariables2,viaPoints)
+
+			publishViaPointTrajectory(c,duration, divisions, viaPoints)
+			
+			confirm = raw_input('Begin Withdraw motion? (y/n):')			
+			if (confirm=="y"):
+			
+				#Lift Test
+				defaultSpeed()
+				Turn4(0)
+				xstart = xend
+				ystart = yend
+				yend = ystart + probeWithdraw
+				zstart = zend
+				zend = zstart + probeWithdrawHeight
+				duration = probeWithdrawDuration
+				
+				startPoint = [xstart, ystart, zstart, 0]
+				endPoint = [xend, yend, zend, duration]
+								
+				viaPoints = 1
+				divisions = 5
+				
+				c = viaPointTrajectoryCalculation(startPoint,endPoint,duration,fixedVariables2,viaPoints)
+
+				publishViaPointTrajectory2(c,duration, divisions, viaPoints)
+				
+				time.sleep(1)
+				defaultSpeed()
+				
+				confirm = raw_input('Zero? (y/n):')			
+				if (confirm=="y"):
+						
+					publishAngles([0,PI/2,0])
+
+def startInsertPosition(Point1, constants):
+	
+	print "Target Point: %.2f, %.2f, %.2f" % (Point1[0], Point1[1], Point1[2])
+	
+	Ik = inverseK(Point1[0], Point1[1], Point1[2], constants[0], constants[1], constants[2], constants[3], constants[4])
+	print "Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f" % (Ik[0], Ik[1], Ik[2])
+	Ik = degToRad(Ik)
+	confirm = raw_input('Move to start point? (y/n):')			
+	if (confirm=="y"):
+		
+		Turn1(Ik[0])
+		time.sleep(1.5)
+		
+		Turn3(Ik[2])	
+		Turn2(Ik[1])			
+		deg4 = -(Ik[1] + Ik[2])
+		Turn4(deg4)
+		
+		return True
+	
+	else:
+		
+		return False
+		
 if __name__== '__main__':
 	try:
 		PI = math.pi
@@ -446,13 +693,8 @@ if __name__== '__main__':
 		rospy.loginfo('Found joint trajectory action!')
 		
 		#Fixed
-		#~ deg0 = 0
-		#~ l1 = 89
-		#~ l2 = 0
-		#~ l3 = 67.5
-		#~ l4 = 100.552
-		#~ deg3c = 11.5949
 		
+		#Variable set one. To do inverse kinematic for grasper tip.
 		deg0 = 0
 		l1 = 89
 		l2 = 0
@@ -467,11 +709,12 @@ if __name__== '__main__':
 		fixedVariables[3] = 0
 		fixedVariables[4] = deg3c
 		
+		#Variable set two. To do inverse kinematic to the middle of the last servo.
 		deg0 = 0
 		l1 = 89
 		l2 = 0
 		l3 = 67.5
-		l4 = 45
+		l4 = 67.5
 		deg3c = 0
 		
 		fixedVariables2 = numpy.zeros(5)
@@ -493,28 +736,7 @@ if __name__== '__main__':
 				OpenClaw()
 				
 			elif s=="default":				
-				#~ goal = FollowJointTrajectoryGoal()                  
-				#~ goal.trajectory.joint_names = ['tilt_joint1', 'tilt_joint2','tilt_joint3', 'tilt_joint4']
-				#~ p = JointTrajectoryPoint()
-				#~ p.velocities = [2, 2, 2, 2]
-				#~ p.positions = [0,1.57,0,0]
-				#~ goal.trajectory.points.append(p)
-							
-				#~ client.send_goal_and_wait(goal)
-				#~ client.wait_for_result()
-								
-				rospy.wait_for_service('/tilt_controller2/set_speed')
-				set_speed1 = rospy.ServiceProxy('/tilt_controller1/set_speed', SetSpeed)
-				set_speed2 = rospy.ServiceProxy('/tilt_controller2/set_speed', SetSpeed)
-				set_speed3 = rospy.ServiceProxy('/tilt_controller3/set_speed', SetSpeed)
-				set_speed4 = rospy.ServiceProxy('/tilt_controller4/set_speed', SetSpeed)
-				try:
-					set_speed1(1.17)
-					set_speed2(1.17)
-					set_speed3(1.17)
-					set_speed4(1.17)
-				except rospy.ServiceException as exc:
-					print("Service did not process request: " + str(exc))
+				defaultSpeed()
 				
 			elif s=="t1":
 				deg = float(raw_input("Enter deg:"))
@@ -538,206 +760,22 @@ if __name__== '__main__':
 				
 			elif s=="zero":
 				publishAngles([0,PI/2,0])
-				
-			elif s=="start1":				
-				
-				ystart = 80.0
-				yend = -80.0
-				xconstant = 70.0
-				zconstant = 5.0
-				delay = 0.029
-				
-				inverseAngles = inverseK(xconstant,ystart,5,l3,l4,(l1+l2), 0, deg3c)
-				inverseAngles = degToRad(inverseAngles)
-				publishAngles(inverseAngles)
-				print "Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f" % (inverseAngles[0], inverseAngles[1], inverseAngles[2])
 			
-			elif s=="smooth":
-				
-				xstart = 100.0
-				xend = 160.0
-				ystart = 0.0
-				yend = 0.0
-				zstart = 80.0
-				zend = 80.0
-				duration = 2
-				delay = 0.029
-				
-				p1 = [xstart, ystart, zstart, 0]
-				p2 = [130, 0, 80, duration/2]
-				p3 = [xend, yend, zend, duration]
-				
-				
-				c1, c2, c3 = viaPointTrajectoryCalculation(p1,p2,p3,fixedVariables)
-				
-				c = []
-				c.append(c1)
-				c.append(c2)
-				c.append(c3)
-				
-				testTrajectory(c,duration)
-				
-			elif s=="picktest":
-				
-				OpenClaw()
-				
-				#~ xstart = 100.0
-				#~ xend = 160.0
-				
-				#Panel 1
-				xstart = 130
-				xend = 140
-				
-				ystart = 0.0
-				yend = 0.0
-				zstart = 77.0
-				zend = 77.0
-				
-				#Panel 2
-				#~ xstart = 150
-				#~ xend = 160
-				
-				#~ ystart = 0.0
-				#~ yend = 0.0
-				#~ zstart = 75.0
-				#~ zend = 75.0
-				
-				delay = 0.029
-				
-				p1 = [xstart, ystart, zstart]
-				p2 = [xend, yend, zend]
-				
-				#Move1: Move in to pick
-				checkMove = moveTraj(p1,p2, 2.0, delay)
-				
-				if checkMove == True:
-					
-					confirm = raw_input('Close Claw (y/n):')			
-					
-					if (confirm=="y"):
-						
-						#Move 2: Close claw
-						CloseClaw()
-						
-						p1 = p2
-						
-						#~ xend = 153.0
-						
-						#Panel 1
-						xend = 140
-						
-						#Panel 2
-						#~ xend = 160
-						
-						yend = 0.0
-						zend = 110.0
-						delay = 0.029
-						
-						p2 = [xend, yend, zend]
-						
-						#Move 3: Move up to separate from base
-						checkMove = moveTraj(p1,p2, 0.5, delay)
-						
-						if checkMove == True:
-							
-							p1 = p2
-							
-							xend = 90.0
-							yend = 0.0
-							zend = 140.0
-							
-							p2 = [xend, yend, zend]
-							
-							#Move 4: Move to reposition
-							moveTraj(p1,p2, 0.5, delay)
-				
-			elif s=="pick":
-				
-				OpenClaw()
-				
-				xstart = 100.0
-				xend = 160.0
-				ystart = 0.0
-				yend = 0.0
-				zstart = 80.0
-				zend = 80.0
-				delay = 0.029
-				
-				p1 = [xstart, ystart, zstart]
-				p2 = [xend, yend, zend]
-				
-				#Move1: Move in to pick
-				checkMove = moveTraj2(p1,p2, 2.0, delay)
-								
-				time.sleep(2)
-				
-				#Move 2: Close claw
-				CloseClaw()
-				
-				time.sleep(2)
-				
-				p1 = p2
-				
-				xend = 160.0
-				yend = 0.0
-				zend = 110.0
-				delay = 0.029
-				
-				p2 = [xend, yend, zend]
-				
-				#Move 3: Move up to separate from base
-				checkMove = moveTraj2(p1,p2, 0.5, delay)
-
-				p1 = p2
-				
-				xend = 90.0
-				yend = 0.0
-				zend = 140.0
-				
-				p2 = [xend, yend, zend]
-				
-				#Move 4: Move to reposition
-				moveTraj2(p1,p2, 0.5, delay)
-				
+			#Determines various joint configuration for a straight line movement - and publishes at a fixed rate. No velocity control							
 			elif s=="move":
 				
-				#~ ystart = 80.0
-				#~ yend = -80.0
-				#~ xconstant = 70.0
-				#~ zconstant = 5.0
-				#~ delay = 0.029
-		
-				#~ p1 = [xconstant, ystart, zconstant]
-				#~ p2 = [xconstant, yend, zconstant]
-				
-				#Pick Motion
-				#~ xstart = 100.0
-				#~ xend = 160.0
-				#~ ystart = 0.0
-				#~ yend = 0.0
-				#~ zstart = 80.0
-				#~ zend = 80.0
-				#~ delay = 0.029
-				
+
 				#Slot 1
 				xstart = 150.0
-				xend = 150.0
 				ystart = 0.0
-				yend = 0.0
 				zstart = 120.0
+				
+				xend = 150.0
+				yend = 0.0
 				zend = 70.0
+				
 				delay = 0.029
-				
-				#Slot 2
-				#~ xstart = 147.0
-				#~ xend = 147.0
-				#~ ystart = 0.0
-				#~ yend = 0.0
-				#~ zstart = 120.0
-				#~ zend = 70.0
-				#~ delay = 0.029
-				
-				
+							
 				p1 = [xstart, ystart, zstart]
 				p2 = [xend, yend, zend]
 				
@@ -764,24 +802,6 @@ if __name__== '__main__':
 						for n in range(1,divisions):
 							publishAngles(jPositions[n])
 							time.sleep(delay)
-				
-			elif s=="traj":
-				
-				ystart = -80.0
-				yend = 80.0
-				xstart = 80.0
-				xend = 80.0
-				zstart = 80.0
-				zend = 80.0
-				
-				p1 = [xstart, ystart, zstart]
-				p2 = [xend, yend, zend]
-				divisions = 100
-				duration = 1
-				timeStamp, jPositions = linearTrajectory(p1,p2,divisions,duration,fixedVariables)
-				confirm = raw_input('Confirm move servos (y/n):')			
-				if (confirm=="y"):
-					publishTrajectory(jPositions, timeStamp)
 			
 			#Sets tip of the robot to a specified point
 			elif s=="set":
@@ -908,12 +928,13 @@ if __name__== '__main__':
 
 				#Get inverse
 				inverseAngles = inverseK(out[0],out[1],out[2],fixedVariables2[0],fixedVariables2[1],fixedVariables2[2], fixedVariables2[3], fixedVariables2[4])
-				print "Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f" % (inverseAngles[0], inverseAngles[1], inverseAngles[2])
-				
 				#Input variables for Forward Kinematics
 				deg1 = inverseAngles[0]
 				deg2 = inverseAngles[1]
 				deg3 = inverseAngles[2]
+				deg4 = -(deg2 + deg3)
+				
+				print "Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f, deg4: %.2f" % (inverseAngles[0], inverseAngles[1], inverseAngles[2], deg4)
 
 				#Input fixed values for Forward Kinematics
 				link_length[0] = l1
@@ -936,11 +957,6 @@ if __name__== '__main__':
 				link_offset[3] = l4
 				link_deg[3] = (deg3-deg3c)*PI/180
 
-				#~ link_length[4] = 0
-				#~ link_twist[4] = 0
-				#~ link_offset[4] = 0
-				#~ link_deg[4] = 0
-
 				#Calculate Rotation Matrix
 				for x in range(0,n_links):
 					dh[x] = dhmatrix(link_length[x],link_twist[x],link_offset[x],link_deg[x])
@@ -952,8 +968,7 @@ if __name__== '__main__':
 
 				for x in range(1,n_links):
 					result=numpy.dot(dh[n_links-1-x],result)
-
-				#~ print "Deg1: %.2f, Deg2: %.2f, Deg3: %.2f" % (deg1,deg2,deg3)
+				
 				print "Resulting point: x: %.2f, y: %.2f, z: %.2f" % (result[0], result[1], result[2])
 				
 				confirm = raw_input('Confirm move servos (y/n):')
@@ -961,135 +976,114 @@ if __name__== '__main__':
 				if (confirm=="y"):
 					Turn1(deg1*PI/180)
 					Turn2(deg2*PI/180)
-					Turn3(deg3*PI/180)	
-					deg4 = (deg2 + deg3)*PI/180
-					Turn4(deg4)
+					Turn3(deg3*PI/180)						
+					Turn4(deg4*PI/180)
 					
-			elif s=="picktest2":
+			elif s=="pick":
 				
-				confirm = raw_input('Move to start point? (y/n):')			
-				if (confirm=="y"):
-					
+				panel = raw_input('Panel number:')
+				
+				height = 91
+				if panel=="1":
 					#Move to start point
-					xstart = 45.0
+					xstart = 100.0
 					ystart = 0.0
-					zstart = 165.0
-					inverseAngles = inverseK(xstart, ystart, zstart,fixedVariables2[0],fixedVariables2[1],fixedVariables2[2], fixedVariables2[3], fixedVariables2[4])
-					deg1 = inverseAngles[0]
-					deg2 = inverseAngles[1]
-					deg3 = inverseAngles[2]
-				
-					Turn1(deg1*PI/180)
-					Turn2(deg2*PI/180)
-					Turn3(deg3*PI/180)	
-					deg4 = (deg2 + deg3)*PI/180
-					Turn4(deg4)
-					
-					confirm = raw_input('Begin pick motion? (y/n):')			
-					if (confirm=="y"):
-					
-						#Pick test - Fixed point
-						xend = xstart + 15			
-						yend = 0.0				
-						zend = zstart
-						duration = 0.9
-						delay = 0.029
-						
-						xmid = (xend + xstart) / 2
-						ymid = (yend + ystart) / 2
-						zmid = (zend + zstart) / 2
-						
-						p1 = [xstart, ystart, zstart, 0]
-						#~ p2 = [45, 0, 168, duration/2]
-						p2 = [xmid, ymid, zmid, duration/2]
-						p3 = [xend, yend, zend, duration]
-						
-						c1, c2, c3 = viaPointTrajectoryCalculation(p1,p2,p3,fixedVariables2)
-						
-						c = []
-						c.append(c1)
-						c.append(c2)
-						c.append(c3)
-						
-						testTrajectory(c,duration)
-						
-						confirm = raw_input('Begin lift motion? (y/n):')			
-						if (confirm=="y"):
-						
-							#Lift Test
-							xstart = xend
-							ystart = 0.0
-							yend = 0.0
-							zstart = zend
-							zend = zstart + 19
-							duration = 1.4
-							delay = 0.029
-							
-							p1 = [xstart, ystart, zstart, 0]
-							#~ p2 = [50, 0, 174, duration/2]
-							xmid = (xend + xstart) / 2
-							ymid = (yend + ystart) / 2
-							zmid = (zend + zstart) / 2
-							p2 = [xmid, ymid, zmid, duration/2]
-							p3 = [xend, yend, zend, duration]
-											
-							c1, c2, c3 = viaPointTrajectoryCalculation(p1,p2,p3,fixedVariables2)
-							
-							c = []
-							c.append(c1)
-							c.append(c2)
-							c.append(c3)
-							
-							testTrajectory(c,duration)
-							
-							defaultSpeed()
-							
-							confirm = raw_input('Close Claw? (y/n):')			
-							if (confirm=="y"):
-								CloseClaw()
-				
-			elif s=="demoparallel":
-				
-				confirm = raw_input('Move to start point? (y/n):')			
-				if (confirm=="y"):
-					
+					zstart = height
+				elif panel=="2":
+					#Move to start point
+					xstart = 115.0
+					ystart = 0.0
+					zstart = height
+				elif panel=="3":
 					#Move to start point
 					xstart = 110.0
 					ystart = 0.0
-					zstart = 80.0
-					inverseAngles = inverseK(xstart, ystart, zstart,fixedVariables2[0],fixedVariables2[1],fixedVariables2[2], fixedVariables2[3], fixedVariables2[4])
-					deg1 = inverseAngles[0]
-					deg2 = inverseAngles[1]
-					deg3 = inverseAngles[2]
+					zstart = height
+				elif panel=="4":
+					#Move to start point
+					xstart = 115.0
+					ystart = 0.0
+					zstart = height
+			
+					
+				P = numpy.zeros((3))
+				P[0] = xstart
+				P[1] = ystart
+				P[2] = zstart
 				
-					Turn1(deg1*PI/180)
-					Turn2(deg2*PI/180)
-					Turn3(deg3*PI/180)	
-					deg4 = (deg2 + deg3)*PI/180
-					Turn4(deg4)
+				movePick(P, fixedVariables2)
+
+			elif s=="insert":
+				
+				panel = raw_input('Panel number:')
+
+				if panel=="1":
+					#Move to start point
+					xstart = 0
+					ystart = -120.0
+					zstart = 150
+				elif panel=="2":
+					#Move to start point
+					xstart = 115.0
+					ystart = 0.0
+					zstart = height
+				elif panel=="3":
+					#Move to start point
+					xstart = 110.0
+					ystart = 0.0
+					zstart = height
+				elif panel=="4":
+					#Move to start point
+					xstart = 115.0
+					ystart = 0.0
+					zstart = height
+			
+					
+				P = numpy.zeros((3))
+				P[0] = xstart
+				P[1] = ystart
+				P[2] = zstart
+				
+				moveInsert(P, fixedVariables2)
+				
+			elif s=="demo":
+
+				#Move to start point
+				
+				xstart = 0.0
+				ystart = -115.0
+				zstart = 150.0
+				
+				xend = 0.0
+				yend = -115.0
+				zend = 100.0
+				
+				duration = 1.0
+				viaPoints = 2
+				divisions = 10
+
+				P = numpy.zeros((3))
+				P[0] = xstart
+				P[1] = ystart
+				P[2] = zstart
+				
+				move = movePoint(P, fixedVariables2)
+				move = True
+				if (move==True):
 					
 					confirm = raw_input('Start Motion? (y/n):')			
 					if (confirm=="y"):
-						#~ #Long Distance Test
 						
-						xend = 70.0
-						yend = 0.0
-						zend = 150.0
-						duration = 2
-						delay = 0.029
+						startPoint = [xstart, ystart, zstart, 0]
+						endPoint = [xend, yend, zend, duration]
+
+						c = viaPointTrajectoryCalculation(startPoint,endPoint,duration,fixedVariables2,viaPoints)
+
+						publishViaPointTrajectory(c,duration, divisions, viaPoints)
 						
-						p1 = [xstart, ystart, zstart, 0]
-						p2 = [110, 0, 90, duration/2]
-						p3 = [xend, yend, zend, duration]
+						time.sleep(1)
 						
-						c1, c2, c3 = viaPointTrajectoryCalculation(p1,p2,p3,fixedVariables2)
-								
-						c = []
-						c.append(c1)
-						c.append(c2)
-						c.append(c3)
-						
-						testTrajectory(c,duration)
+						defaultSpeed()
 			
 	except rospy.ROSInterruptException:
 		pass
