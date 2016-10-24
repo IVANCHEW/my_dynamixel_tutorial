@@ -425,6 +425,10 @@ def Turn4(deg4):
 	rospy.loginfo(numpy.float64(deg4))
 	pub4.publish(numpy.float64(deg4))
 	
+def Turn5(deg5):
+	rospy.loginfo(numpy.float64(deg5))
+	pub5.publish(numpy.float64(deg5))
+	
 def publishAngles(rads):
 	#Receives the angles in Radians
 	#degs is a list of size 3 containing the joint positions
@@ -497,17 +501,11 @@ def movePoint2(Point1, constants):
 		
 		return False
 					
-def movePick(P, fixedVariables2):
+def movePick(P, fixedVariables2, probeInsert, probeInsertDuration, probeLift, probeLiftDuration):
 	#Move to start point
 	xstart = P[0]
 	ystart = P[1]
 	zstart = P[2]
-	
-	#Motion Constants
-	probeInsert = 15
-	probeInsertDuration = 0.5
-	probeLift = 30
-	probeLiftDuration = 0.5
 	
 	move = startPickPosition(P, fixedVariables2)
 	
@@ -518,7 +516,7 @@ def movePick(P, fixedVariables2):
 		
 			#Probe Insert Action
 			xend = xstart + probeInsert	
-			yend = 0.0				
+			yend = ystart			
 			zend = zstart
 			duration = probeInsertDuration
 			
@@ -537,8 +535,7 @@ def movePick(P, fixedVariables2):
 			
 				#Probe Lift Action
 				xstart = xend
-				ystart = 0.0
-				yend = 0.0
+				ystart = yend
 				zstart = zend
 				zend = zstart + probeLift
 				duration = probeLiftDuration
@@ -556,11 +553,45 @@ def movePick(P, fixedVariables2):
 				time.sleep(1)
 				defaultSpeed()
 				
-				confirm = raw_input('Close Claw? (y/n):')			
+				confirm = raw_input('Begin Withdraw Motion? (y/n):')			
 				if (confirm=="y"):
-						
+					
+					#Probe Lift Action
+					xstart = xend
+					xend = xstart - probeInsert
+					ystart = yend
+					yend = ystart
+					zstart = zend
+					duration = probeLiftDuration
+					
+					startPoint = [xstart, ystart, zstart, 0]
+					endPoint = [xend, yend, zend, duration]
+									
+					viaPoints = 1
+					divisions = 5
+					
+					c = viaPointTrajectoryCalculation(startPoint,endPoint,duration,fixedVariables2,viaPoints)
+
+					publishViaPointTrajectory(c,duration, divisions, viaPoints)
+					
+					defaultSpeed()
+				
+					set_speed2 = rospy.ServiceProxy('/tilt_controller2/set_speed', SetSpeed)
+					set_speed3 = rospy.ServiceProxy('/tilt_controller3/set_speed', SetSpeed)
+					
+					try:
+						set_speed2(0.5)
+						set_speed3(0.5)
+					except rospy.ServiceException as exc:
+						print("Service did not process request: " + str(exc))
+
 					move = movePoint2([70,0,200], fixedVariables2)
-					CloseClaw()
+					
+					if (move==True):
+						CloseClaw()
+						
+						time.sleep(2)
+						defaultSpeed()
 
 def startPickPosition(Point1, constants):
 	#zero
@@ -587,27 +618,29 @@ def startPickPosition(Point1, constants):
 		
 		return False
 		
-def moveInsert(P, fixedVariables2):
+def moveInsert(P, fixedVariables2, probeInsert, probeInsertDuration, probeWithdraw, probeWithdrawHeight, probeWithdrawDuration):
 	#Move to start point
 	xstart = P[0]
 	ystart = P[1]
 	zstart = P[2]
-	
-	#Motion Constants
-	probeInsert = -40
-	probeInsertDuration = 1.2
-	probeWithdraw = 30
-	probeWithdrawHeight = 10
-	probeWithdrawDuration = 0.5
-	
+		
 	move = startInsertPosition(P, fixedVariables2)
 	
 	if (move==True):
 		
+		set_speed2 = rospy.ServiceProxy('/tilt_controller2/set_speed', SetSpeed)
+		set_speed3 = rospy.ServiceProxy('/tilt_controller3/set_speed', SetSpeed)
+		
+		try:
+			set_speed2(0.5)
+			set_speed3(0.5)
+		except rospy.ServiceException as exc:
+			print("Service did not process request: " + str(exc))
+					
 		confirm = raw_input('Begin Insert motion? (y/n):')			
 		if (confirm=="y"):
 		
-			#Pick test - Fixed point
+			#Insert Motion
 			xend = xstart 
 			yend = ystart			
 			zend = zstart + probeInsert	
@@ -626,9 +659,10 @@ def moveInsert(P, fixedVariables2):
 			confirm = raw_input('Begin Withdraw motion? (y/n):')			
 			if (confirm=="y"):
 			
-				#Lift Test
+				#Withdraw Motion
 				defaultSpeed()
 				Turn4(0)
+				time.sleep(0.2)
 				xstart = xend
 				ystart = yend
 				yend = ystart + probeWithdraw
@@ -685,6 +719,7 @@ if __name__== '__main__':
 		pub1 = rospy.Publisher('/tilt_controller1/command', Float64, queue_size=10)
 		pub2 = rospy.Publisher('/tilt_controller2/command', Float64, queue_size=10)
 		pub3 = rospy.Publisher('/tilt_controller3/command', Float64, queue_size=10)
+		pub5 = rospy.Publisher('/tilt_controller5/command', Float64, queue_size=10)
 		rospy.init_node('TurnServo', anonymous=True)
 		
 		client  = actionlib.SimpleActionClient('/f_arm_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
@@ -757,6 +792,11 @@ if __name__== '__main__':
 				deg = float(raw_input("Enter deg:"))
 				deg4= deg*PI/180
 				Turn4(deg4)
+				
+			elif s=="t5":
+				deg = float(raw_input("Enter deg:"))
+				deg5= deg*PI/180
+				Turn5(deg5)
 				
 			elif s=="zero":
 				publishAngles([0,PI/2,0])
@@ -981,6 +1021,13 @@ if __name__== '__main__':
 					
 			elif s=="pick":
 				
+					
+				#Motion Constants
+				probeInsert = 15
+				probeInsertDuration = 0.5
+				probeLift = 30
+				probeLiftDuration = 0.5
+				
 				panel = raw_input('Panel number:')
 				
 				height = 91
@@ -1011,22 +1058,31 @@ if __name__== '__main__':
 				P[1] = ystart
 				P[2] = zstart
 				
-				movePick(P, fixedVariables2)
+				movePick(P, fixedVariables2, probeInsert, probeInsertDuration, probeLift, probeLiftDuration)
 
 			elif s=="insert":
+				
+				#Motion Constants
+				probeInsert = -40
+				probeInsertDuration = 1.2
+				probeWithdraw = 30
+				probeWithdrawHeight = 10
+				probeWithdrawDuration = 0.5
 				
 				panel = raw_input('Panel number:')
 
 				if panel=="1":
 					#Move to start point
+					Turn5(90*PI/180)
 					xstart = 0
 					ystart = -120.0
 					zstart = 150
 				elif panel=="2":
 					#Move to start point
-					xstart = 115.0
-					ystart = 0.0
-					zstart = height
+					Turn5(0)
+					xstart = 0.0
+					ystart = -122.0
+					zstart = 145.0
 				elif panel=="3":
 					#Move to start point
 					xstart = 110.0
@@ -1044,7 +1100,7 @@ if __name__== '__main__':
 				P[1] = ystart
 				P[2] = zstart
 				
-				moveInsert(P, fixedVariables2)
+				moveInsert(P, fixedVariables2, probeInsert, probeInsertDuration, probeWithdraw, probeWithdrawHeight, probeWithdrawDuration)
 				
 			elif s=="demo":
 

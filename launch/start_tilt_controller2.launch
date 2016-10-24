@@ -8,6 +8,7 @@
 				tilt_controller2
 				tilt_controller3
 				tilt_controller4
+				tilt_controller5
 				"
 		  output="screen"/>    
 	
@@ -24,5 +25,5 @@
 				"
 				
 	output="screen"/>	
-    
+
 </launch>
