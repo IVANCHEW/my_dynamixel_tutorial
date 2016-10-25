@@ -6,6 +6,7 @@ import time
 import numpy as numpy
 from numpy.linalg import inv
 from std_msgs.msg import Float64
+from std_msgs.msg import String
 
 import roslib
 import actionlib
@@ -14,6 +15,8 @@ import control_msgs.msg
 from trajectory_msgs.msg import JointTrajectoryPoint
 from control_msgs.msg import JointTrajectoryAction, JointTrajectoryGoal, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from dynamixel_controllers.srv import *
+
+import threading
 
 def dhmatrix(a, twist, offset, deg):
 	dh = numpy.zeros((4,4))
@@ -121,13 +124,13 @@ def linearTrajectory(cord1, cord2, points, duration, constants):
 		
 		timeStamp[i] = currentTime
 		currentTime = currentTime + tIncrement
-		print "Time Stamp: %.2f, Positions: %.2f, %.2f, %.2f" % (timeStamp[i], positions[i][0], positions[i][1], positions[i][2])
+		#~ print "Time Stamp: %.2f, Positions: %.2f, %.2f, %.2f" % (timeStamp[i], positions[i][0], positions[i][1], positions[i][2])
 	
 	return timeStamp, positions
 
 def publishTrajectory(positions, timeStamps):
 	s = (positions.size)/3
-	print s
+	#~ print s
 	goal = FollowJointTrajectoryGoal()                  
 	goal.trajectory.joint_names = ['tilt_joint1', 'tilt_joint2','tilt_joint3']
 	
@@ -140,7 +143,7 @@ def publishTrajectory(positions, timeStamps):
 		goal.trajectory.points.append(p[i])
 		goal.trajectory.points[i].time_from_start = rospy.Duration(timeStamps[i])
 
-	print goal
+	#~ print goal
 
 	client.send_goal_and_wait(goal)
 	client.wait_for_result()
@@ -171,8 +174,8 @@ def viaPointTrajectoryCalculation(startPoint, endPoint, duration, constants, via
 	P[n][1] = endPoint[1] 
 	P[n][2] = endPoint[2] 
 	
-	print "Coordinate Positions:"
-	print P
+	#~ print "Coordinate Positions:"
+	#~ print P
 	
 	#Load Joint Space Positions
 	Ik = numpy.zeros((viaPointsNumber+2, 3))
@@ -180,8 +183,8 @@ def viaPointTrajectoryCalculation(startPoint, endPoint, duration, constants, via
 		Ik[i] = inverseK(P[i][0], P[i][1], P[i][2], constants[0], constants[1], constants[2], constants[3], constants[4])
 		Ik[i] = degToRad(Ik[i])
 
-	print "Inverse Angles:"
-	print Ik
+	#~ print "Inverse Angles:"
+	#~ print Ik
 	
 	t = numpy.zeros((viaPointsNumber + 2))
 	timeStep = float(duration) / (viaPointsNumber + 1)
@@ -189,9 +192,9 @@ def viaPointTrajectoryCalculation(startPoint, endPoint, duration, constants, via
 	for i in range(viaPointsNumber + 1):
 		t[i+1] = t[i] + timeStep
 	
-	print "Duration %.2f" % duration
-	print "Time Stamps:"
-	print t
+	#~ print "Duration %.2f" % duration
+	#~ print "Time Stamps:"
+	#~ print t
 	
 	#Load Matrix B
 	B = numpy.zeros((viaPointsNumber + 2,viaPointsNumber + 6))
@@ -199,8 +202,8 @@ def viaPointTrajectoryCalculation(startPoint, endPoint, duration, constants, via
 		for j in range(3):
 			B[j][i] = Ik[i][j]
 	
-	print "Matrix B:"
-	print B
+	#~ print "Matrix B:"
+	#~ print B
 
 	#Load Matrix A: Joint Position Rows
 	A1 = numpy.zeros((6+viaPointsNumber,6+viaPointsNumber))
@@ -237,8 +240,8 @@ def viaPointTrajectoryCalculation(startPoint, endPoint, duration, constants, via
 		A1[n+i][3+viaPointsNumber] = 2
 		
 	
-	print "A1:"
-	print A1
+	#~ print "A1:"
+	#~ print A1
 	
 	#Inverse
 	A2 = inv(A1)
@@ -248,8 +251,8 @@ def viaPointTrajectoryCalculation(startPoint, endPoint, duration, constants, via
 	for i in range (viaPointsNumber + 2):
 		C[i] = numpy.dot(A2 , B[i])
 		
-	print "C:"
-	print C
+	#~ print "C:"
+	#~ print C
 	
 	return C
 
@@ -266,9 +269,9 @@ def publishViaPointTrajectory(c, duration, divisions, viaPointsNumber):
 	velocities = numpy.zeros((divisions+1,4))
 	accelerations = numpy.zeros((divisions+1,4))
 	
-	print timeStep
+	#~ print timeStep
 	
-	print "Duration: %.2f, Time Step: %.2f" % (duration, timeStep)
+	#~ print "Duration: %.2f, Time Step: %.2f" % (duration, timeStep)
 	
 	#Calculate Position and Velocity Values
 	for i in range(divisions+1):
@@ -297,11 +300,11 @@ def publishViaPointTrajectory(c, duration, divisions, viaPointsNumber):
 		
 		currentTime = timeStep + currentTime	
 	
-	print "Positions"
-	print positions
-	print "Velocities"
-	print velocities
-	currentTime = 0
+	#~ print "Positions"
+	#~ print positions
+	#~ print "Velocities"
+	#~ print velocities
+	#~ currentTime = 0
 	
 	#Loading Goal object
 	p = []
@@ -318,9 +321,9 @@ def publishViaPointTrajectory(c, duration, divisions, viaPointsNumber):
 		currentTime = timeStep + currentTime
 	
 	#Print start, mid and end point for reference
-	print goal.trajectory.points[0]
-	print goal.trajectory.points[divisions/2]
-	print goal.trajectory.points[divisions]
+	#~ print goal.trajectory.points[0]
+	#~ print goal.trajectory.points[divisions/2]
+	#~ print goal.trajectory.points[divisions]
 	
 	#~ #Executing Motion				
 	client.send_goal_and_wait(goal)
@@ -339,9 +342,9 @@ def publishViaPointTrajectory2(c, duration, divisions, viaPointsNumber):
 	velocities = numpy.zeros((divisions+1,4))
 	accelerations = numpy.zeros((divisions+1,4))
 	
-	print timeStep
+	#~ print timeStep
 	
-	print "Duration: %.2f, Time Step: %.2f" % (duration, timeStep)
+	#~ print "Duration: %.2f, Time Step: %.2f" % (duration, timeStep)
 	
 	#Calculate Position and Velocity Values
 	for i in range(divisions+1):
@@ -370,10 +373,10 @@ def publishViaPointTrajectory2(c, duration, divisions, viaPointsNumber):
 		
 		currentTime = timeStep + currentTime	
 	
-	print "Positions"
-	print positions
-	print "Velocities"
-	print velocities
+	#~ print "Positions"
+	#~ print positions
+	#~ print "Velocities"
+	#~ print velocities
 	currentTime = 0
 	
 	#Loading Goal object
@@ -391,9 +394,9 @@ def publishViaPointTrajectory2(c, duration, divisions, viaPointsNumber):
 		currentTime = timeStep + currentTime
 	
 	#Print start, mid and end point for reference
-	print goal.trajectory.points[0]
-	print goal.trajectory.points[divisions/2]
-	print goal.trajectory.points[divisions]
+	#~ print goal.trajectory.points[0]
+	#~ print goal.trajectory.points[divisions/2]
+	#~ print goal.trajectory.points[divisions]
 	
 	#~ #Executing Motion
 	client.send_goal_and_wait(goal)
@@ -464,7 +467,9 @@ def movePoint(Point1, constants):
 	Ik = inverseK(Point1[0], Point1[1], Point1[2], constants[0], constants[1], constants[2], constants[3], constants[4])
 	print "Inverse Angles: deg1: %.2f, deg2: %.2f, deg3: %.2f" % (Ik[0], Ik[1], Ik[2])
 	Ik = degToRad(Ik)
-	confirm = raw_input('Move to start point? (y/n):')			
+	
+	confirm = "y"
+	#~ confirm = raw_input('Move to start point? (y/n):')			
 	if (confirm=="y"):
 		
 		Turn1(Ik[0])
@@ -483,8 +488,8 @@ def movePoint(Point1, constants):
 def movePoint2(Point1, constants):
 	
 	print "Target Point: %.2f, %.2f, %.2f" % (Point1[0], Point1[1], Point1[2])
-	
-	confirm = raw_input('Move to start point? (y/n):')			
+	confirm ="y"
+	#~ confirm = raw_input('Move to start point? (y/n):')			
 	if (confirm=="y"):
 					
 		Ik = inverseK(Point1[0], Point1[1], Point1[2], constants[0], constants[1], constants[2], constants[3], constants[4])
@@ -508,10 +513,13 @@ def movePick(P, fixedVariables2, probeInsert, probeInsertDuration, probeLift, pr
 	zstart = P[2]
 	
 	move = startPickPosition(P, fixedVariables2)
+	confirm = "y"
+	wait = 0.3
 	
 	if (move==True):
 		
-		confirm = raw_input('Begin pick motion? (y/n):')			
+		#~ confirm = raw_input('Begin pick motion? (y/n):')		
+		time.sleep(1.5)	
 		if (confirm=="y"):
 		
 			#Probe Insert Action
@@ -530,7 +538,9 @@ def movePick(P, fixedVariables2, probeInsert, probeInsertDuration, probeLift, pr
 
 			publishViaPointTrajectory(c,duration, divisions, viaPoints)
 			
-			confirm = raw_input('Begin lift motion? (y/n):')			
+			#~ confirm = raw_input('Begin lift motion? (y/n):')		
+			time.sleep(wait)
+				
 			if (confirm=="y"):
 			
 				#Probe Lift Action
@@ -550,22 +560,24 @@ def movePick(P, fixedVariables2, probeInsert, probeInsertDuration, probeLift, pr
 
 				publishViaPointTrajectory(c,duration, divisions, viaPoints)
 				
-				time.sleep(1)
+				#~ time.sleep(1)
 				defaultSpeed()
 				
-				confirm = raw_input('Begin Withdraw Motion? (y/n):')			
+				#~ confirm = raw_input('Begin Withdraw Motion? (y/n):')	
+				time.sleep(wait)
+						
 				if (confirm=="y"):
 					
-					#Probe Lift Action
+					#Probe Withdraw Action
 					xstart = xend
-					xend = xstart - probeInsert
+					xend = xstart - probeInsert - 20
 					ystart = yend
 					yend = ystart
 					zstart = zend
 					duration = probeLiftDuration
 					
 					startPoint = [xstart, ystart, zstart, 0]
-					endPoint = [xend, yend, zend, duration]
+					endPoint = [xend, yend, zend, duration+1.0]
 									
 					viaPoints = 1
 					divisions = 5
@@ -711,6 +723,113 @@ def startInsertPosition(Point1, constants):
 	else:
 		
 		return False
+
+def callback(data):
+	global publicX
+	global publicY
+	global publicZ
+	global publicDuration
+	
+	global teleStepX
+	global teleStepY
+	global teleStepZ
+	
+	global constantCheck
+	global threadContinue
+	
+	rospy.loginfo(rospy.get_caller_id() + "I heard %s", data.data)
+	s = str(data.data)
+	print "Data converted to string: %s" % s
+	#Forward
+	if (s=="3"):
+		
+		teleStepX = 2.0
+		threadContinue = True
+		threads = []
+		t = threading.Thread(target=beginThread)
+		threads.append(t)
+		t.start()
+    
+	#Backward
+	elif (s=="4"):
+						
+		teleStepX = -2.0
+		threadContinue = True
+		threads = []
+		t = threading.Thread(target=beginThread)
+		threads.append(t)
+		t.start()
+		
+	#Left
+	elif (s=="2"):
+				
+		teleStepY = 2.0
+		threadContinue = True
+		threads = []
+		t = threading.Thread(target=beginThread)
+		threads.append(t)
+		t.start()
+		
+	#Right
+	elif s=="1":
+		
+		teleStepY = -2.0
+		threadContinue = True
+		threads = []
+		t = threading.Thread(target=beginThread)
+		threads.append(t)
+		t.start()
+		
+	elif s=="8":
+		constantCheck = 0
+		threadContinue = False
+		teleStepX = 0.0
+		teleStepY = 0.0
+		teleStepZ = 0.0
+		
+		
+	
+def teleOp():
+	rospy.Subscriber("chatter", String, callback)
+	rospy.spin()
+	constantCheck=constantCheck+1
+	rospy.loginfo(constantCheck)
+
+def beginThread():
+	
+	global constantCheck
+	global publicX
+	global publicY
+	global publicZ
+	global publicDuration
+	
+	global teleStepX
+	global teleStepY
+	global teleStepZ
+	
+	threads2 = []
+	
+	while (threadContinue==True):
+		publicX = publicX + teleStepX
+		publicY = publicY + teleStepY
+		publicZ = publicZ + teleStepZ
+		
+		t2 = threading.Thread(target=followCommand)
+		threads2.append(t2)
+		t2.start()
+		time.sleep(0.1)
+		constantCheck = constantCheck + 1
+	
+	
+def followCommand():
+	global publicX
+	global publicY
+	global publicZ
+	global fixedVariables2
+	
+	move = movePoint([publicX, publicY, publicZ], fixedVariables2)
+	print constantCheck
+	
 		
 if __name__== '__main__':
 	try:
@@ -758,6 +877,19 @@ if __name__== '__main__':
 		fixedVariables2[2] = l1+l2
 		fixedVariables2[3] = 0
 		fixedVariables2[4] = deg3c
+		
+		#Teleop Start
+		publicX = 100.0
+		publicY = 0.0
+		publicZ = 100.0
+		publicDuration = 0.4
+		constantCheck = 0
+		threadContinue = False
+		moveForward = False
+		
+		teleStepX = 0.0
+		teleStepY = 0.0
+		teleStepZ = 0.0
 				
 				
 		while not rospy.is_shutdown():
@@ -802,8 +934,7 @@ if __name__== '__main__':
 				publishAngles([0,PI/2,0])
 			
 			#Determines various joint configuration for a straight line movement - and publishes at a fixed rate. No velocity control							
-			elif s=="move":
-				
+			elif s=="move":						
 
 				#Slot 1
 				xstart = 150.0
@@ -1030,7 +1161,7 @@ if __name__== '__main__':
 				
 				panel = raw_input('Panel number:')
 				
-				height = 91
+				height = 90
 				if panel=="1":
 					#Move to start point
 					xstart = 100.0
@@ -1141,6 +1272,13 @@ if __name__== '__main__':
 						
 						defaultSpeed()
 			
+			elif s=="teleop":
+				move = movePoint([publicX, publicY, publicZ], fixedVariables2)
+				teleOp()
+			
+			
+				
+				
 	except rospy.ROSInterruptException:
 		pass
 		
